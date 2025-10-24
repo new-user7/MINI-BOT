@@ -192,6 +192,7 @@ async function connectToWA() {
         } else return jid;
     };
     
+    // --- FIXED FUNCTION ---
     sock.copyNForward = async (jid, message, forceForward = false, options = {}) => {
         let vtype;
         if (options.readViewOnce) {
@@ -202,15 +203,33 @@ async function connectToWA() {
             message.message = { ...message.message.viewOnceMessage.message };
         }
         let mtype = Object.keys(message.message)[0];
-        let content = await generateWAMessageContent(message, { (!!forceForward) }); 
+        
+        // --- FIX 1: Syntax Error yahan tha ---
+        let content = await generateWAMessageContent(message, {}); 
+        
         let ctype = Object.keys(content)[0];
         let context = {};
         if (mtype != 'conversation') context = message.message[mtype].contextInfo;
+        
+        // Base context banayein
         content[ctype].contextInfo = { ...context, ...content[ctype].contextInfo };
-        const waMessage = await generateWAMessageFromContent(jid, content, options ? { ...content[ctype], ...options, ...(options.contextInfo ? { contextInfo: { ...content[ctype].contextInfo, ...options.contextInfo } } : {}) } : {});
+
+        // --- FIX 2: forceForward ki logic ko sahi se apply karein ---
+        let finalOptions = options ? { ...content[ctype], ...options } : { ...content[ctype] };
+
+        // ContextInfo ko merge karein aur forceForward parameter ko override karein
+        finalOptions.contextInfo = {
+            ...content[ctype].contextInfo,    // Original message ka context
+            ...(options.contextInfo || {}),   // Naye options ka context
+            isForwarded: !!forceForward       // forceForward ki value ko apply karein (true/false)
+        };
+        
+        const waMessage = await generateWAMessageFromContent(jid, content, finalOptions);
+        
         await sock.relayMessage(jid, waMessage.message, { messageId: waMessage.key.id });
         return waMessage;
     };
+    // --- END OF FIXED FUNCTION ---
 
     sock.downloadAndSaveMediaMessage = async (message, filename, attachExtension = true) => {
         let quoted = message.msg ? message.msg : message;
@@ -294,4 +313,3 @@ app.listen(port, () => console.log(`Server listening on port http://localhost:${
 setTimeout(() => {
     connectToWA();
 }, 2500);
-
