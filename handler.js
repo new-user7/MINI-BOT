@@ -1,6 +1,6 @@
 const { getContentType, jidNormalizedUser } = require('@whiskeysockets/baileys');
 const config = require('./config');
-const { sms } = require('./lib');
+// const { sms } = require('./lib'); // --- FIX: Iski zaroorat nahi hai ---
 const { saveMessage } = require('./data');
 const { getGroupAdmins } = require('./lib/functions');
 const util = require('util');
@@ -19,26 +19,25 @@ module.exports = async (sock, messages) => {
              console.log("Anti-View Once message captured.");
         }
 
-        // --- All Auto-Status logic removed ---
-
         await Promise.all([saveMessage(m)]);
-        const message = sms(sock, m);
+        // const message = sms(sock, m); // --- FIX: Yeh line hata di ---
         
-        // Check if message is valid after processing
-        if (!message) return;
+        // if (!message) return; // --- FIX: Yeh "Silent Fail" wali line hata di ---
 
         const mtype = getContentType(m.message);
         const from = m.key.remoteJid;
         const quoted = mtype === 'extendedTextMessage' && m.message.extendedTextMessage.contextInfo != null ? m.message.extendedTextMessage.contextInfo.quotedMessage || [] : [];
+        
+        // --- FIX: 'body' ko 'text' ki jagah bhi istemal karein gay ---
         const body = (mtype === 'conversation') ? m.message.conversation : (mtype === 'extendedTextMessage') ? m.message.extendedTextMessage.text : (mtype == 'imageMessage' && m.message.imageMessage.caption) ? m.message.imageMessage.caption : (mtype == 'videoMessage' && m.message.videoMessage.caption) ? m.message.videoMessage.caption : '';
         
         const prefix = config.PREFIX;
         const isCmd = body.startsWith(prefix);
-        var text = typeof message.text == 'string' ? message.text : '';
+        // var text = typeof message.text == 'string' ? message.text : ''; // --- FIX: Iski jagah 'body' use karein gay ---
         const command = isCmd ? body.slice(prefix.length).trim().split(' ')[0].toLowerCase() : '';
         const args = body.trim().split(/ +/).slice(1);
         const q = args.join(' ');
-        const textArgs = args.join(' ');
+        const textArgs = args.join(' '); // 'text' ki jagah yeh use hoga commands mein
         const isGroup = from.endsWith('@g.us');
         const sender = m.key.fromMe ? (sock.user.id.split(':')[0] + '@s.whatsapp.net' || sock.user.id) : (m.key.participant || m.key.remoteJid);
         const senderNumber = sender.split('@')[0];
@@ -54,7 +53,7 @@ module.exports = async (sock, messages) => {
         const groupAdmins = isGroup ? await getGroupAdmins(participants) : '';
         const isBotAdmins = isGroup ? groupAdmins.includes(botJid) : false;
         const isAdmins = isGroup ? groupAdmins.includes(sender) : false;
-        const isReaction = message.message.reactionMessage ? true : false;
+        const isReaction = m.message && m.message.reactionMessage ? true : false; // m.message check add kiya
         
         const reply = (text) => {
             sock.sendMessage(from, { text: text }, { quoted: m });
@@ -63,8 +62,9 @@ module.exports = async (sock, messages) => {
         let botCreator = [botNumber.split('@')[0], config.DEV].map(v => v.replace(/[^0-9]/g) + '@s.whatsapp.net').includes(m.sender);
 
         // --- Owner Commands ($ and %) ---
-        if (botCreator && m.text.startsWith('%')) {
-            let code = text.slice(2);
+        // --- FIX: 'text' ki jagah 'body' istemal kiya ---
+        if (botCreator && body.startsWith('%')) {
+            let code = body.slice(2); // text.slice(2) ki jagah
             if (!code) return reply('Provide me with a query to run Master!');
             try {
                 let result = eval(code);
@@ -76,8 +76,9 @@ module.exports = async (sock, messages) => {
             return;
         }
 
-        if (botCreator && m.text.startsWith('$')) {
-            let code = text.slice(2);
+        // --- FIX: 'text' ki jagah 'body' istemal kiya ---
+        if (botCreator && body.startsWith('$')) {
+            let code = body.slice(2); // text.slice(2) ki jagah
             if (!code) return reply('Provide me with a query to run Master!');
             try {
                 let result = await eval('const a = async()=>{\n' + code + '\n}\na()');
@@ -91,8 +92,6 @@ module.exports = async (sock, messages) => {
             return;
         }
         
-        // --- Auto React and Mode logic removed ---
-
         // --- Command Handling ---
         const cmd = isCmd ? body.slice(prefix.length).trim().split(' ')[0].toLowerCase() : false;
 
@@ -101,9 +100,9 @@ module.exports = async (sock, messages) => {
             if (commandHandler) {
                 if (commandHandler.react) sock.sendMessage(from, { react: { text: commandHandler.react, key: m.key } });
                 try {
-                    commandHandler.function(sock, m, message, {
+                    commandHandler.function(sock, m, m, { // 'message' ki jagah 'm' pass kiya
                         from, quoted, body, isCmd, command, args, q, text: textArgs, isGroup, sender, senderNumber,
-                        botNumber2: botJid, botNumber, pushname, isMe, isOwner, isPrivateOwner, // isPrivateOwner PASS HOGA
+                        botNumber2: botJid, botNumber, pushname, isMe, isOwner, isPrivateOwner, 
                         isCreator: botCreator, groupMetadata,
                         groupName, participants, groupAdmins, isBotAdmins, isAdmins, reply
                     });
@@ -115,19 +114,22 @@ module.exports = async (sock, messages) => {
         
         // --- 'on' Event Handling (e.g., on: 'text') ---
         commandModule.commands.map(async (command) => {
-            if (isReaction) return; // Don't trigger 'on' events for reactions
+            if (isReaction) return; 
             
             const context = { from, quoted, body, isCmd, command, args, q, text: textArgs, isGroup, sender, senderNumber,
                               botNumber2: botJid, botNumber, pushname, isMe, isOwner, isPrivateOwner, isCreator: botCreator, groupMetadata,
                               groupName, participants, groupAdmins, isBotAdmins, isAdmins, reply };
             
             try {
+                // m.mtype ko check karein
+                const mType = Object.keys(m.message)[0]; 
+
                 if (body && command.on === 'text') {
-                    command.function(sock, m, message, context);
-                } else if ((command.on === 'image' || command.on === 'photo') && m.mtype === 'imageMessage') {
-                    command.function(sock, m, message, context);
-                } else if (command.on === 'sticker' && m.mtype === 'stickerMessage') {
-                    command.function(sock, m, message, context);
+                    command.function(sock, m, m, context);
+                } else if ((command.on === 'image' || command.on === 'photo') && mType === 'imageMessage') {
+                    command.function(sock, m, m, context);
+                } else if (command.on === 'sticker' && mType === 'stickerMessage') {
+                    command.function(sock, m, m, context);
                 }
             } catch (e) {
                  console.error('[EVENT PLUGIN ERROR] ' + e);
@@ -138,4 +140,3 @@ module.exports = async (sock, messages) => {
         console.error("Error in messages.upsert handler: ", e);
     }
 };
-
