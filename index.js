@@ -16,21 +16,19 @@ const {
     Browsers
 } = require('@whiskeysockets/baileys');
 
-const l = console.log;
-const { getBuffer } = require('./lib/functions');
-const fs = require('fs');
 const P = require('pino');
+const { getBuffer } = require('./lib'); // ./lib/index.js se import karega
+const fs = require('fs-extra'); // fs-extra use karein
 const config = require('./config');
 const GroupEvents = require('./lib/groupevents');
-const { AntiDelete } = require('./lib/antidel'); // AntiDelete function
+const { AntiDelete } = require('./lib/antidel'); 
 const path = require('path');
 const os = require('os');
 const axios = require('axios');
 const FileType = require('file-type');
-const { File } = require('megajs'); // Aapke Mega.nz code ke liye zaroori hai
+const { File } = require('megajs'); 
 const prefix = config.PREFIX;
-const ownerNumber = ['923151105391'];
-const private_owner = '923151105391'; // <--- PRIVATE OWNER KA NUMBER
+
 // Cache Temp Directory
 const tempDir = path.join(os.tmpdir(), 'cache-temp');
 if (!fs.existsSync(tempDir)) {
@@ -53,7 +51,7 @@ const express = require('express');
 const app = express();
 const port = process.env.PORT || 9090;
 
-// --- Session Handling (Aapka Mega.nz wala code) ---
+// --- Session Handling ---
 if (!fs.existsSync(__dirname + '/sessions/')) {
     fs.mkdirSync(__dirname + '/sessions/');
 }
@@ -62,7 +60,8 @@ if (!fs.existsSync(__dirname + '/sessions/creds.json')) {
     if (!config.SESSION_ID) {
         return console.log('Please add your session to SESSION_ID env !!');
     }
-    const sessdata = config.SESSION_ID.replace('Qadeer~', '');
+    // Session ID format check karein (agar "Qadeer~" hata diya hai)
+    const sessdata = config.SESSION_ID.replace('Qadeer~', ''); 
     const filer = File.fromURL('https://mega.nz/file/' + sessdata);
     filer.download((err, data) => {
         if (err) throw err;
@@ -80,18 +79,28 @@ async function connectToWA() {
     var { version } = await fetchLatestBaileysVersion();
 
     const sock = makeWASocket({
-        logger: P({ level: 'silent' }),
-        printQRInTerminal: true, // Agar session nahi milta toh QR code dikhaye ga
+        logger: P({ level: 'silent' }), // Silent logger
+        printQRInTerminal: false, // Isay false karein, logs mein warning de raha tha
         browser: Browsers.macOS('Firefox'),
         auth: state,
-        version: version
+        version: version,
+        shouldIgnoreJid: jid => jid.endsWith('@broadcast'),
+        getMessage: async key => {
+            return { conversation: 'Bot Connected by Qadeer Khan' };
+        }
     });
-
-    // --- Pairing Code Logic Removed ---
 
     // --- Event Listeners ---
     sock.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect } = update;
+        const { connection, lastDisconnect, qr } = update;
+        
+        // Agar QR code aaye (session na ho)
+        if (qr) {
+             console.log('QR Code generated. Scan it with your phone.');
+             // Optional: qrcode-terminal se display karwayein
+             // require('qrcode-terminal').generate(qr, { small: true });
+        }
+
         if (connection === 'close') {
             const statusCode = lastDisconnect.error?.output?.statusCode;
             if (statusCode && statusCode !== DisconnectReason.loggedOut) {
@@ -109,6 +118,7 @@ async function connectToWA() {
             console.log('Bot connected to whatsapp ✅');
             
             // --- Plugin Loader ---
+            console.log('Loading plugins...');
             fs.readdirSync('./plugins/').forEach(plugin => {
                 if (path.extname(plugin).toLowerCase() == '.js') {
                     try {
@@ -124,39 +134,42 @@ async function connectToWA() {
                     }
                 }
             });
-            console.log('Plugins loaded successfully ✅');
+            console.log('Plugins loaded successfully ✅'); // <--- AB YEH MESSAGE LOGS MEIN AAYEGA
 
-            // --- Startup Message ---
+            // --- Startup Message (FIXED) ---
             let startMessage = `*✦ QADEER-AI (Mini) CONNECTED ✦*
 
 ╭─【 🛡️ *BOT DETAILS* 】
 │ 👤 *Creator:* ${config.OWNER_NAME}
 │ 🪀 *Prefix:* ➥ ${config.PREFIX}
-│ ♻️ *Mode:* [Public]
 │ 📦 *Plugins:* ${fs.readdirSync('./plugins/').length}
 ╰─────────────╯
 > *${config.DESCRIPTION}*`;
 
-            const verifiedReply = {
-                key: { participant: `0@s.whatsapp.net`, fromMe: false, remoteJid: "status@broadcast" },
-                message: { extendedTextMessage: { text: "Qadeer-AI Official", contextInfo: { verifiedBizName: "Qadeer-AI" } } }
-            };
+            try {
+                const verifiedReply = {
+                    key: { participant: `0@s.whatsapp.net`, fromMe: false, remoteJid: "status@broadcast" },
+                    message: { extendedTextMessage: { text: "Qadeer-AI Official", contextInfo: { verifiedBizName: "Qadeer-AI" } } }
+                };
 
-            await sock.sendMessage(
-                sock.user.id,
-                {
-                    image: { url: config.ALIVE_IMG },
-                    caption: startMessage,
-                    contextInfo: {
-                        mentionedJid: [sock.user.id],
-                        forwardingScore: 999, isForwarded: true,
-                        forwardedNewsletterMessageInfo: {
-                            newsletterJid: '120363345872435489@newsletter',
-                            newsletterName: "𝚀𝙰𝙳𝙴𝙴𝚁-𝙰𝙸", serverMessageId: 143
+                await sock.sendMessage(
+                    sock.user.id,
+                    {
+                        image: { url: config.ALIVE_IMG },
+                        caption: startMessage,
+                        contextInfo: {
+                            mentionedJid: [sock.user.id],
+                            forwardingScore: 999, isForwarded: true,
+                            forwardedNewsletterMessageInfo: {
+                                newsletterJid: '120363345872435489@newsletter',
+                                newsletterName: "𝚀𝙰𝙳𝙴𝙴𝚁-𝙰𝙸", serverMessageId: 143
+                            }
                         }
-                    }
-                }, { quoted: verifiedReply }
-            );
+                    }, { quoted: verifiedReply }
+                );
+            } catch (e) {
+                console.error("Error sending startup message:", e);
+            }
         }
     });
 
@@ -192,7 +205,6 @@ async function connectToWA() {
         } else return jid;
     };
     
-    // --- FIXED FUNCTION ---
     sock.copyNForward = async (jid, message, forceForward = false, options = {}) => {
         let vtype;
         if (options.readViewOnce) {
@@ -204,24 +216,20 @@ async function connectToWA() {
         }
         let mtype = Object.keys(message.message)[0];
         
-        // --- FIX 1: Syntax Error yahan tha ---
         let content = await generateWAMessageContent(message, {}); 
         
         let ctype = Object.keys(content)[0];
         let context = {};
         if (mtype != 'conversation') context = message.message[mtype].contextInfo;
         
-        // Base context banayein
         content[ctype].contextInfo = { ...context, ...content[ctype].contextInfo };
 
-        // --- FIX 2: forceForward ki logic ko sahi se apply karein ---
         let finalOptions = options ? { ...content[ctype], ...options } : { ...content[ctype] };
 
-        // ContextInfo ko merge karein aur forceForward parameter ko override karein
         finalOptions.contextInfo = {
-            ...content[ctype].contextInfo,    // Original message ka context
-            ...(options.contextInfo || {}),   // Naye options ka context
-            isForwarded: !!forceForward       // forceForward ki value ko apply karein (true/false)
+            ...content[ctype].contextInfo,
+            ...(options.contextInfo || {}),
+            isForwarded: !!forceForward
         };
         
         const waMessage = await generateWAMessageFromContent(jid, content, finalOptions);
@@ -229,7 +237,6 @@ async function connectToWA() {
         await sock.relayMessage(jid, waMessage.message, { messageId: waMessage.key.id });
         return waMessage;
     };
-    // --- END OF FIXED FUNCTION ---
 
     sock.downloadAndSaveMediaMessage = async (message, filename, attachExtension = true) => {
         let quoted = message.msg ? message.msg : message;
@@ -309,6 +316,14 @@ app.get('/', (req, res) => {
 });
 
 app.listen(port, () => console.log(`Server listening on port http://localhost:${port}`));
+
+// Database connection (assuming it's in lib/database.js)
+try {
+    require('./lib/database'); // Ya jahan bhi database.js hai
+} catch (e) {
+    console.error("Database connection error (if any):", e);
+}
+
 
 setTimeout(() => {
     connectToWA();
