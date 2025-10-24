@@ -1,0 +1,96 @@
+{
+  "name": "QADEER-AI-Mini",
+  "description": "WhatsApp bot (Mini Version) by Qadeer Khan",
+  "logo": "https://qu.ax/Pusls.jpg",
+  "keywords": ["QADEER-AI", "whatsapp-bot"],
+  "success_url": "/",
+  "stack": "container",
+  "env": {
+    "SESSION_ID": {
+      "description": "Put the session-id here (Base64). Keep empty if using pairing code.",
+      "required": false,
+      "value": ""
+    },
+    "STICKER_NAME": {
+      "description": "type your sticker pack name.",
+      "required": false,
+      "value": "QADEER-AI"
+    },
+    "PREFIX": {
+      "description": "paste your bot prefix.",
+      "required": false,
+      "value": "."
+    },
+    "ANTI_DELETE": {
+      "description": "set true for show deleted messages.",
+      "required": false,
+      "value": "true"
+    },
+    "ANTI_DEL_PATH": {
+      "description": "change it to -same- if you want to resend deleted message in same chat",
+      "required": false,
+      "value": "inbox"
+    },
+    "OWNER_NAME": {
+      "description": "Type Bot Owner Name.",
+      "required": false,
+      "value": "Qadeer Khan"
+    },
+    "OWNER_NUMBER": {
+      "description": "put the owner number for bot.",
+      "required": false,
+      "value": "923151105391"
+    },
+    "BOT_NAME": {
+      "description": "Type here the bot name.",
+      "required": false,
+      "value": "QADEER-AI (Mini)"
+    },
+    "ANTI_LINK": {
+      "description": "Make it true if you want bot auto remove group link.",
+      "required": false,
+      "value": "false"
+    },
+    "ANTI_LINK_KICK": {
+      "description": "Make it true if you want bot auto kick user on link.",
+      "required": false,
+      "value": "false"
+    },
+    "DELETE_LINKS": {
+      "description": "remove links from group automatically without removing member",
+      "required": false,
+      "value": "false"
+    },
+    "MENU_IMAGE_URL": {
+      "description": "add url for mention reply and menu if want.",
+      "required": false,
+      "value": "https://qu.ax/Pusls.jpg"
+    },
+    "DESCRIPTION": {
+      "description": "add caption for menu and other",
+      "required": false,
+      "value": "*© 𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈 𝚀𝙰𝙳𝙴𝙴𝚁 𝙺𝙷𝙰𝙽*"
+    },
+    "ADMIN_EVENTS": {
+      "description": "make it true if want know who promote or demote a member .",
+      "required": false,
+      "value": "false"
+    },
+    "WELCOME": {
+      "description": "make it true if want goodbye and welcome message in groups.",
+      "required": false,
+      "value": "true"
+    },
+    "ANTI_VV": {
+      "description": "make it true for anti view once.",
+      "required": false,
+      "value": "true"
+    }
+  },
+  "buildpacks": [
+    {
+      "url": "https://github.com/heroku/heroku-buildpack-nodejs.git"
+    }
+  ],
+  "stack": "heroku-24"
+}
