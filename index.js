@@ -1,5 +1,3 @@
-Yeh lijiye aap ke main index.js ka complete aur clean code.
-Yeh wohi code hai jisko hum ne refactor kiya tha taakay plugins pehlay load hon aur bot baad mein connect ho.
 const {
     default: makeWASocket,
     useMultiFileAuthState,
