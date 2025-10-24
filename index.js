@@ -1,3 +1,5 @@
+Yeh lijiye aap ke main index.js ka complete aur clean code.
+Yeh wohi code hai jisko hum ne refactor kiya tha taakay plugins pehlay load hon aur bot baad mein connect ho.
 const {
     default: makeWASocket,
     useMultiFileAuthState,
@@ -50,37 +52,97 @@ setInterval(clearTempDir, 5 * 60 * 1000); // Har 5 minute mein temp saaf karega
 const express = require('express');
 const app = express();
 const port = process.env.PORT || 9090;
+app.get('/', (req, res) => {
+    res.send('QADEER-AI-Mini is Running!');
+});
 
-// --- Session Handling ---
-if (!fs.existsSync(__dirname + '/sessions/')) {
-    fs.mkdirSync(__dirname + '/sessions/');
-}
-
-if (!fs.existsSync(__dirname + '/sessions/creds.json')) {
-    if (!config.SESSION_ID) {
-        return console.log('Please add your session to SESSION_ID env !!');
+// --- 1. Session Handling Function ---
+async function initializeSession() {
+    if (!fs.existsSync(__dirname + '/sessions/')) {
+        fs.mkdirSync(__dirname + '/sessions/');
     }
-    // Session ID format check karein (agar "Qadeer~" hata diya hai)
-    const sessdata = config.SESSION_ID.replace('Qadeer~', ''); 
-    const filer = File.fromURL('https://mega.nz/file/' + sessdata);
-    filer.download((err, data) => {
-        if (err) throw err;
-        fs.writeFile(__dirname + '/sessions/creds.json', data, () => {
-            console.log('Session downloaded ✅');
+
+    if (!fs.existsSync(__dirname + '/sessions/creds.json')) {
+        if (!config.SESSION_ID) {
+            console.error('Please add your session to SESSION_ID env !!');
+            process.exit(1); // Exit if no session
+        }
+        console.log('Downloading session...');
+        const sessdata = config.SESSION_ID.replace('Qadeer~', '');
+        const filer = File.fromURL('https://mega.nz/file/' + sessdata);
+        
+        // Promise use karein gay taakay download ka wait kar sakein
+        return new Promise((resolve, reject) => {
+            filer.download((err, data) => {
+                if (err) {
+                    console.error("Session download failed!", err);
+                    reject(err); // Error reject karein
+                    process.exit(1);
+                }
+                fs.writeFile(__dirname + '/sessions/creds.json', data, (writeErr) => {
+                    if (writeErr) {
+                        console.error("Failed to write session file!", writeErr);
+                        reject(writeErr); // Error reject karein
+                        process.exit(1);
+                    }
+                    console.log('Session downloaded ✅');
+                    resolve(); // Success resolve karein
+                });
+            });
         });
-    });
+    } else {
+         console.log("Session file found.");
+         return Promise.resolve(); // Session pehlay se mojood hai
+    }
 }
 // --- End Session Handling ---
 
-async function connectToWA() {
+// --- 2. Plugin Loader Function ---
+// (Yeh function ab plugins load karega aur logs mein show karega)
+function loadPlugins() {
+    console.log('Loading plugins...');
+    const pluginDir = './plugins/';
+    
+    if (!fs.existsSync(pluginDir)) {
+        console.warn("Warning: 'plugins' directory not found, skipping plugin loading.");
+        return 0; // 0 plugins load huay
+    }
+    
+    const pluginFiles = fs.readdirSync(pluginDir).filter(file => path.extname(file).toLowerCase() === '.js');
+    
+    for (const plugin of pluginFiles) {
+        try {
+            const pluginPath = path.resolve(pluginDir, plugin);
+            require(pluginPath);
+            // --- YEH LOG AAP NE MANGA THA ---
+            console.log(`- Plugin Loaded: ${plugin}`); 
+        } catch (e) {
+            console.error(`Error loading plugin: ${plugin}`);
+            console.error(e);
+        }
+    }
+    
+    if (pluginFiles.length > 0) {
+        console.log('All plugins loaded successfully ✅');
+    } else {
+        console.log('No plugins found to load.');
+    }
+    
+    return pluginFiles.length; // Loaded plugins ka count return karega
+}
+// --- End Plugin Loader ---
+
+
+// --- 3. WhatsApp Connection Function ---
+async function connectToWA(pluginCount) { // pluginCount ko argument ke tor par le ga
     console.log('Connecting to WhatsApp ⏳️...');
     
     const { state, saveCreds } = await useMultiFileAuthState(__dirname + '/sessions/');
     var { version } = await fetchLatestBaileysVersion();
 
     const sock = makeWASocket({
-        logger: P({ level: 'silent' }), // Silent logger
-        printQRInTerminal: false, // Isay false karein, logs mein warning de raha tha
+        logger: P({ level: 'silent' }),
+        printQRInTerminal: false,
         browser: Browsers.macOS('Firefox'),
         auth: state,
         version: version,
@@ -94,7 +156,6 @@ async function connectToWA() {
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
         
-        // Agar QR code aaye (session na ho)
         if (qr) {
              console.log('QR Code generated. Scan it with your phone.');
              // Optional: qrcode-terminal se display karwayein
@@ -105,44 +166,25 @@ async function connectToWA() {
             const statusCode = lastDisconnect.error?.output?.statusCode;
             if (statusCode && statusCode !== DisconnectReason.loggedOut) {
                 console.log('Connection closed due to an error, reconnecting...');
-                connectToWA();
+                startBot(); // Re-run the full startBot logic on disconnect
             } else if (statusCode === DisconnectReason.loggedOut) {
                 console.log('Connection closed. Logged out. Deleting session and exiting.');
                 fs.rmSync(__dirname + '/sessions/', { recursive: true, force: true });
                 process.exit(1); 
             } else {
                  console.log('Connection closed, reconnecting...');
-                 connectToWA();
+                 startBot(); // Re-run the full startBot logic
             }
         } else if (connection === 'open') {
             console.log('Bot connected to whatsapp ✅');
             
-            // --- Plugin Loader ---
-            console.log('Loading plugins...');
-            fs.readdirSync('./plugins/').forEach(plugin => {
-                if (path.extname(plugin).toLowerCase() == '.js') {
-                    try {
-                        const pluginPath = path.resolve('./plugins/', plugin);
-                        if (fs.existsSync(pluginPath)) {
-                            require(pluginPath);
-                        } else {
-                            console.warn(`Warning: Plugin file not found, skipping: ${plugin}`);
-                        }
-                    } catch (e) {
-                        console.error(`Error loading plugin: ${plugin}`);
-                        console.error(e);
-                    }
-                }
-            });
-            console.log('Plugins loaded successfully ✅'); // <--- AB YEH MESSAGE LOGS MEIN AAYEGA
-
             // --- Startup Message (FIXED) ---
             let startMessage = `*✦ QADEER-AI (Mini) CONNECTED ✦*
 
 ╭─【 🛡️ *BOT DETAILS* 】
 │ 👤 *Creator:* ${config.OWNER_NAME}
 │ 🪀 *Prefix:* ➥ ${config.PREFIX}
-│ 📦 *Plugins:* ${fs.readdirSync('./plugins/').length}
+│ 📦 *Plugins:* ${pluginCount}
 ╰─────────────╯
 > *${config.DESCRIPTION}*`;
 
@@ -191,6 +233,7 @@ async function connectToWA() {
     });
 
     // Main Message Handler (New File)
+    // Ab jab yeh call hoga, plugins pehlay se loaded hon gay
     sock.ev.on('messages.upsert', messages => {
         require('./handler')(sock, messages);
     });
@@ -310,21 +353,36 @@ async function connectToWA() {
     return sock;
 }
 
-// --- Start Server and Bot ---
-app.get('/', (req, res) => {
-    res.send('QADEER-AI-Mini is Running!');
-});
 
-app.listen(port, () => console.log(`Server listening on port http://localhost:${port}`));
+// --- 4. Main Bot Start Function ---
+// (Yeh function ab sab cheezon ko order mein chalaayega)
+async function startBot() {
+    // 1. Server start karein (Heroku/Koyeb ke liye)
+    app.listen(port, () => console.log(`Server listening on port http://localhost:${port}`));
 
-// Database connection (assuming it's in lib/database.js)
-try {
-    require('./lib/database'); // Ya jahan bhi database.js hai
-} catch (e) {
-    console.error("Database connection error (if any):", e);
+    try {
+        // 2. Session check/download karein
+        await initializeSession();
+        
+        // 3. Plugins load karein (aur logs mein show karein)
+        const loadedPluginCount = loadPlugins(); 
+        
+        // 4. Database connection (agar hai)
+        try {
+            require('./lib/database'); // Ya jahan bhi database.js hai
+        } catch (e) {
+            console.error("Database connection error (if any):", e);
+        }
+
+        // 5. Jab sab load ho jaaye, tab WhatsApp connect karein
+        await connectToWA(loadedPluginCount); // Plugin count pass karein
+
+    } catch (error) {
+        console.error("Failed to start bot due to critical error:", error);
+        process.exit(1); // Agar session ya koi zaroori cheez fail ho
+    }
 }
 
+// --- Bot Ko Start Karein ---
+startBot();
 
-setTimeout(() => {
-    connectToWA();
-}, 2500);
